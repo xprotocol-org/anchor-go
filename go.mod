@@ -8,7 +8,9 @@ require (
 	github.com/dave/jennifer v1.7.1
 	github.com/davecgh/go-spew v1.1.1
 	github.com/gagliardetto/binary v0.8.0
+	github.com/gagliardetto/gofuzz v1.2.2
 	github.com/gagliardetto/solana-go v1.12.0
+	github.com/gagliardetto/treeout v0.1.4
 	github.com/gagliardetto/utilz v0.1.3
 	github.com/stretchr/testify v1.8.1
 	golang.org/x/mod v0.24.0
@@ -20,7 +22,6 @@ require (
 	github.com/blendle/zapdriver v1.3.1 // indirect
 	github.com/buger/goterm v1.0.4 // indirect
 	github.com/fatih/color v1.18.0 // indirect
-	github.com/gagliardetto/treeout v0.1.4 // indirect
 	github.com/hako/durafmt v0.0.0-20210608085754-5c1018a4e16b // indirect
 	github.com/json-iterator/go v1.1.12 // indirect
 	github.com/klauspost/compress v1.18.0 // indirect

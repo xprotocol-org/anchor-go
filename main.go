@@ -304,8 +304,6 @@ func GenerateClientFromProgramIDL(idl IDL) ([]*FileWrapper, error) {
 		file := NewGoFile(determinePackageName(idl.Name), true)
 		insExportedName := ToCamel(instruction.Name)
 
-		// fmt.Println(RedBG(instruction.Name))
-
 		{
 			code := Empty().Line().Line()
 

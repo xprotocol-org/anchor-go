@@ -314,8 +314,9 @@ func genTypeDef(idl *IDL, withDiscriminator bool, def IdlTypeDef) Code {
 
 				// Declare the enum variant types:
 				if variant.IsUint8() {
-					// TODO: make the name {variantTypeName}_{interface_name} ???
-					code.Type().Id(variantTypeNameComplex).Uint8().Line().Line()
+					code.Type().Id(variantTypeNameComplex).StructFunc(
+						func(structGroup *Group) {},
+					).Line().Line()
 				} else {
 					code.Type().Id(variantTypeNameComplex).StructFunc(
 						func(structGroup *Group) {
@@ -636,23 +637,10 @@ func genUnmarshalWithDecoder_struct(
 								BlockFunc(func(switchGroup *Group) {
 									interfaceType := idl.Types.GetByName(enumName)
 									for variantIndex, variant := range interfaceType.Type.Variants {
-										variantTypeNameComplex := formatComplexEnumVariantTypeName(enumName, variant.Name)
-
-										if variant.IsUint8() {
-											// TODO: the actual value is not important;
-											//  what's important is the type.
-											switchGroup.Case(Lit(variantIndex)).
-												BlockFunc(func(caseGroup *Group) {
-													caseGroup.Id("obj").Dot(exportedArgName).Op("=").
-														Parens(Op("*").Id(variantTypeNameComplex)).
-														Parens(Op("&").Id("tmp").Dot("Enum"))
-												})
-										} else {
-											switchGroup.Case(Lit(variantIndex)).
-												BlockFunc(func(caseGroup *Group) {
-													caseGroup.Id("obj").Dot(exportedArgName).Op("=").Op("&").Id("tmp").Dot(ToCamel(variant.Name))
-												})
-										}
+										switchGroup.Case(Lit(variantIndex)).
+											BlockFunc(func(caseGroup *Group) {
+												caseGroup.Id("obj").Dot(exportedArgName).Op("=").Op("&").Id("tmp").Dot(ToCamel(variant.Name))
+											})
 									}
 									switchGroup.Default().
 										BlockFunc(func(caseGroup *Group) {

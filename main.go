@@ -316,28 +316,19 @@ func DecodeInstructions(message *ag_solanago.Message) (instructions []*Instructi
 	}
 
 	defs := make(map[string]IdlTypeDef)
-	{
-		file := NewGoFile(idl.Metadata.Name, true)
-		// Declare types from IDL:
-		for _, typ := range idl.Types {
-			defs[typ.Name] = typ
-			file.Add(genTypeDef(&idl, nil, IdlTypeDef{
-				Name: typ.Name,
-				Type: typ.Type,
-			}))
-		}
-		files = append(files, &FileWrapper{
-			Name: "types",
-			File: file,
-		})
-	}
 
 	{
-		file := NewGoFile(idl.Metadata.Name, true)
+		for _, typ := range idl.Types {
+			defs[typ.Name] = typ
+		}
+
+		accountFile := NewGoFile(idl.Metadata.Name, true)
 		// Declare account layouts from IDL:
+		accountDefs := make(map[string]struct{})
 		for _, acc := range idl.Accounts {
 			if _, ok := defs[acc.Name]; ok {
-				file.Add(genTypeDef(&idl, acc.Discriminator, IdlTypeDef{
+				accountDefs[acc.Name] = struct{}{}
+				accountFile.Add(genTypeDef(&idl, acc.Discriminator, IdlTypeDef{
 					Name: defs[acc.Name].Name + "Account",
 					Type: defs[acc.Name].Type,
 				}))
@@ -347,7 +338,23 @@ func DecodeInstructions(message *ag_solanago.Message) (instructions []*Instructi
 		}
 		files = append(files, &FileWrapper{
 			Name: "accounts",
-			File: file,
+			File: accountFile,
+		})
+
+		typesFile := NewGoFile(idl.Metadata.Name, true)
+		// Declare types from IDL:
+		for _, typ := range idl.Types {
+			if _, ok := accountDefs[typ.Name]; ok {
+				continue
+			}
+			typesFile.Add(genTypeDef(&idl, nil, IdlTypeDef{
+				Name: typ.Name,
+				Type: typ.Type,
+			}))
+		}
+		files = append(files, &FileWrapper{
+			Name: "types",
+			File: typesFile,
 		})
 	}
 

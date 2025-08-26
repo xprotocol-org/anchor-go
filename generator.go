@@ -1,6 +1,8 @@
 package main
 
 import (
+	"fmt"
+
 	. "github.com/dave/jennifer/jen"
 	"github.com/davecgh/go-spew/spew"
 	bin "github.com/gagliardetto/binary"
@@ -112,6 +114,11 @@ func genTypeName(idlTypeEnv IdlType) Code {
 		{
 			arr := idlTypeEnv.GetArray()
 			st.Index(Id(Itoa(arr.Num))).Add(genTypeName(arr.Thing))
+		}
+	case idlTypeEnv.IsHashMap():
+		{
+			hashMap := idlTypeEnv.GetHashMap()
+			st.Map(genTypeName(hashMap.Key)).Add(genTypeName(hashMap.Value))
 		}
 	default:
 		panic(spew.Sdump(idlTypeEnv))
@@ -333,8 +340,22 @@ func genTypeDef(idl *IDL, withDiscriminator bool, def IdlTypeDef) Code {
 											return nil
 										}())
 								}
+							case variant.Fields.IdlEnumFieldsTuple != nil:
+								// Handle tuple variants - create numbered fields
+								for i, tupleType := range *variant.Fields.IdlEnumFieldsTuple {
+									fieldName := fmt.Sprintf("Field%d", i)
+									structGroup.Id(fieldName).Add(genTypeName(tupleType)).
+										Add(func() Code {
+											if tupleType.IsIdlTypeOption() {
+												return Tag(map[string]string{
+													"bin": "optional",
+												})
+											}
+											return nil
+										}())
+								}
 							default:
-								// TODO: handle tuples
+								// TODO: handle other field types if any
 								panic("not handled: " + Sdump(variant.Fields))
 							}
 						},

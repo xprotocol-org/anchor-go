@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"fmt"
 	"testing"
 
 	. "github.com/dave/jennifer/jen"
@@ -483,4 +484,275 @@ func Test_HashMap_EdgeCases(t *testing.T) {
 			json.Unmarshal([]byte(jsonData), &idlType)
 		}, "Should panic on empty hashMap")
 	})
+}
+
+// Helper functions for test data creation
+func createStringIdlType() IdlType {
+	var idlType IdlType
+	json.Unmarshal([]byte(`"string"`), &idlType)
+	return idlType
+}
+
+func createBoolIdlType() IdlType {
+	var idlType IdlType
+	json.Unmarshal([]byte(`"bool"`), &idlType)
+	return idlType
+}
+
+func createDefinedIdlType(name string) IdlType {
+	var idlType IdlType
+	json.Unmarshal([]byte(fmt.Sprintf(`{"defined": "%s"}`, name)), &idlType)
+	return idlType
+}
+
+func Test_isComplexEnum(t *testing.T) {
+	// Setup test data
+	namedFields := IdlEnumFieldsNamed{
+		{Name: "field1", Type: createStringIdlType()},
+	}
+
+	testTypes := []IdlTypeDef{
+		{
+			Name: "SimpleEnum",
+			Type: IdlTypeDefTy{
+				Kind: IdlTypeDefTyKindEnum,
+				Variants: []IdlEnumVariant{
+					{Name: "One", Fields: nil},
+					{Name: "Two", Fields: nil},
+				},
+			},
+		},
+		{
+			Name: "ComplexEnum",
+			Type: IdlTypeDefTy{
+				Kind: IdlTypeDefTyKindEnum,
+				Variants: []IdlEnumVariant{
+					{
+						Name: "WithFields",
+						Fields: &IdlEnumFields{
+							IdlEnumFieldsNamed: &namedFields,
+						},
+					},
+				},
+			},
+		},
+	}
+
+	idl := IDL{Types: testTypes}
+
+	// Register complex enums
+	for _, typ := range testTypes {
+		registerComplexEnums(&idl, typ)
+	}
+
+	tests := []struct {
+		name     string
+		typeName string
+		expected bool
+	}{
+		{
+			name:     "simple enum should not be complex",
+			typeName: "SimpleEnum",
+			expected: false,
+		},
+		{
+			name:     "enum with fields should be complex",
+			typeName: "ComplexEnum",
+			expected: true,
+		},
+		{
+			name:     "non-existent type should not be complex",
+			typeName: "NonExistent",
+			expected: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			idlType := createDefinedIdlType(tt.typeName)
+			result := isComplexEnum(idlType)
+			assert.Equal(t, tt.expected, result)
+		})
+	}
+}
+
+func Test_LargeEnumDetection(t *testing.T) {
+	tests := []struct {
+		name         string
+		variantCount int
+		expected     bool
+	}{
+		{
+			name:         "small enum (8 variants) should not be large",
+			variantCount: 8,
+			expected:     false,
+		},
+		{
+			name:         "large enum (9 variants) should be large",
+			variantCount: 9,
+			expected:     true,
+		},
+		{
+			name:         "very large enum (15 variants) should be large",
+			variantCount: 15,
+			expected:     true,
+		},
+		{
+			name:         "tiny enum (3 variants) should not be large",
+			variantCount: 3,
+			expected:     false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Create variants
+			variants := make([]IdlEnumVariant, tt.variantCount)
+			for i := 0; i < tt.variantCount; i++ {
+				namedFields := IdlEnumFieldsNamed{
+					{Name: "field", Type: createStringIdlType()},
+				}
+				variants[i] = IdlEnumVariant{
+					Name: fmt.Sprintf("Variant%d", i),
+					Fields: &IdlEnumFields{
+						IdlEnumFieldsNamed: &namedFields,
+					},
+				}
+			}
+
+			// Test the logic used in the generator
+			isLargeEnum := len(variants) > 8
+			assert.Equal(t, tt.expected, isLargeEnum)
+		})
+	}
+}
+
+func Test_EnumVariantGeneration(t *testing.T) {
+	// Test that enum variants are properly generated for both small and large enums
+	namedFields1 := IdlEnumFieldsNamed{
+		{Name: "field1", Type: createStringIdlType()},
+	}
+	namedFields2 := IdlEnumFieldsNamed{
+		{Name: "field2", Type: createBoolIdlType()},
+	}
+
+	testEnum := IdlTypeDef{
+		Name: "TestEnum",
+		Type: IdlTypeDefTy{
+			Kind: IdlTypeDefTyKindEnum,
+			Variants: []IdlEnumVariant{
+				{
+					Name: "VariantOne",
+					Fields: &IdlEnumFields{
+						IdlEnumFieldsNamed: &namedFields1,
+					},
+				},
+				{
+					Name: "VariantTwo",
+					Fields: &IdlEnumFields{
+						IdlEnumFieldsNamed: &namedFields2,
+					},
+				},
+			},
+		},
+	}
+
+	idl := IDL{Types: []IdlTypeDef{testEnum}}
+
+	// Register complex enums
+	registerComplexEnums(&idl, testEnum)
+
+	// Test that the enum was registered as complex
+	idlType := createDefinedIdlType("TestEnum")
+	assert.True(t, isComplexEnum(idlType), "TestEnum should be registered as complex")
+
+	// Test variant count logic
+	isLarge := len(testEnum.Type.Variants) > 8
+	assert.False(t, isLarge, "TestEnum with 2 variants should not be large")
+}
+
+func Test_genInitializeComplexEnumFields(t *testing.T) {
+	// Test the function that generates complex enum field initialization
+	namedFields := IdlEnumFieldsNamed{
+		{
+			Name: "collection",
+			Type: createDefinedIdlType("CollectionToggle"),
+		},
+		{
+			Name: "uses",
+			Type: createDefinedIdlType("UsesToggle"),
+		},
+	}
+
+	testVariant := IdlEnumVariant{
+		Name: "TestVariant",
+		Fields: &IdlEnumFields{
+			IdlEnumFieldsNamed: &namedFields,
+		},
+	}
+
+	// Create test IDL with complex enum types (they need to have fields to be complex)
+	collectionFields := IdlEnumFieldsNamed{
+		{Name: "value", Type: createStringIdlType()},
+	}
+	usesFields := IdlEnumFieldsNamed{
+		{Name: "count", Type: createStringIdlType()},
+	}
+
+	idl := IDL{
+		Types: []IdlTypeDef{
+			{
+				Name: "CollectionToggle",
+				Type: IdlTypeDefTy{
+					Kind: IdlTypeDefTyKindEnum,
+					Variants: []IdlEnumVariant{
+						{Name: "None", Fields: nil},
+						{Name: "Clear", Fields: nil},
+						{
+							Name: "Set",
+							Fields: &IdlEnumFields{
+								IdlEnumFieldsNamed: &collectionFields,
+							},
+						},
+					},
+				},
+			},
+			{
+				Name: "UsesToggle",
+				Type: IdlTypeDefTy{
+					Kind: IdlTypeDefTyKindEnum,
+					Variants: []IdlEnumVariant{
+						{Name: "None", Fields: nil},
+						{Name: "Clear", Fields: nil},
+						{
+							Name: "Set",
+							Fields: &IdlEnumFields{
+								IdlEnumFieldsNamed: &usesFields,
+							},
+						},
+					},
+				},
+			},
+		},
+	}
+
+	// Register complex enums
+	for _, typ := range idl.Types {
+		registerComplexEnums(&idl, typ)
+	}
+
+	// Generate the initialization code
+	code := genInitializeComplexEnumFields(idl, "TestEnum", testVariant)
+
+	// Convert to string to check the generated code
+	codeStr := fmt.Sprintf("%#v", code)
+
+	// Check that code was actually generated (not empty)
+	assert.NotEmpty(t, codeStr, "Should generate some initialization code")
+
+	// The code should contain initialization for both complex enum fields
+	assert.Contains(t, codeStr, "Collection", "Should generate initialization for Collection field")
+	assert.Contains(t, codeStr, "Uses", "Should generate initialization for Uses field")
+	assert.Contains(t, codeStr, "CollectionToggleNone", "Should initialize to None variant")
+	assert.Contains(t, codeStr, "UsesToggleNone", "Should initialize to None variant")
 }

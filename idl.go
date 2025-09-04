@@ -252,6 +252,12 @@ type IdlTypeDefined struct {
 	Defined string `json:"defined"`
 }
 
+// HashMap type.
+type IdlTypeHashMap struct {
+	Key   IdlType `json:"key"`
+	Value IdlType `json:"value"`
+}
+
 // Wrapper type:
 type IdlTypeArray struct {
 	Thing IdlType
@@ -322,6 +328,23 @@ func (env *IdlType) UnmarshalJSON(data []byte) error {
 
 				env.asIdlTypeArray = &target
 			}
+			if got, ok := v["hashMap"]; ok {
+				if _, ok := got.([]interface{}); !ok {
+					panic(Sf("hashMap is not in expected format:\n%s", spew.Sdump(got)))
+				}
+				arrVal := got.([]interface{})
+				if len(arrVal) != 2 {
+					panic(Sf("hashMap is not of expected length:\n%s", spew.Sdump(got)))
+				}
+				var target IdlTypeHashMap
+				if err := TranscodeJSON(arrVal[0], &target.Key); err != nil {
+					return err
+				}
+				if err := TranscodeJSON(arrVal[1], &target.Value); err != nil {
+					return err
+				}
+				env.asIdlTypeHashMap = &target
+			}
 			// panic(Sf("what is this?:\n%s", spew.Sdump(temp)))
 		}
 	default:
@@ -338,6 +361,7 @@ type IdlType struct {
 	asIdlTypeOption  *IdlTypeOption
 	asIdlTypeDefined *IdlTypeDefined
 	asIdlTypeArray   *IdlTypeArray
+	asIdlTypeHashMap *IdlTypeHashMap
 }
 
 func (env *IdlType) IsString() bool {
@@ -371,6 +395,12 @@ func (env *IdlType) GetIdlTypeDefined() *IdlTypeDefined {
 }
 func (env *IdlType) GetArray() *IdlTypeArray {
 	return env.asIdlTypeArray
+}
+func (env *IdlType) IsHashMap() bool {
+	return env.asIdlTypeHashMap != nil
+}
+func (env *IdlType) GetHashMap() *IdlTypeHashMap {
+	return env.asIdlTypeHashMap
 }
 
 type IdlTypeDef struct {
@@ -471,13 +501,20 @@ func (env *IdlEnumFields) UnmarshalJSON(data []byte) error {
 
 			firstItem := v[0]
 
-			if _, ok := firstItem.(map[string]interface{})["name"]; ok {
-				// TODO:
-				// If has `name` field, then it's most likely a IdlEnumFieldsNamed.
-				if err := TranscodeJSON(temp, &env.IdlEnumFieldsNamed); err != nil {
-					return err
+			// Check if firstItem is a map and has "name" field
+			if firstItemMap, ok := firstItem.(map[string]interface{}); ok {
+				if _, hasName := firstItemMap["name"]; hasName {
+					// If has `name` field, then it's most likely a IdlEnumFieldsNamed.
+					if err := TranscodeJSON(temp, &env.IdlEnumFieldsNamed); err != nil {
+						return err
+					}
+				} else {
+					if err := TranscodeJSON(temp, &env.IdlEnumFieldsTuple); err != nil {
+						return err
+					}
 				}
 			} else {
+				// firstItem is not a map (likely a string), treat as tuple
 				if err := TranscodeJSON(temp, &env.IdlEnumFieldsTuple); err != nil {
 					return err
 				}

@@ -1,6 +1,8 @@
 package main
 
 import (
+	"fmt"
+
 	. "github.com/dave/jennifer/jen"
 	. "github.com/gagliardetto/utilz"
 )
@@ -185,6 +187,9 @@ func genTestWithComplexEnum(tFunGroup *Group, insExportedName string, instructio
 					variantBlock.Id("params").Dot("AccountMetaSlice").Op("=").Nil()
 					variantBlock.Id("tmp").Op(":=").New(Id(formatComplexEnumVariantTypeName(enumName, variant.Name)))
 					variantBlock.Id("fu").Dot("Fuzz").Call(Id("tmp"))
+					if initCode := genInitializeComplexEnumFields(idl, enumName, variant); !isEmpty(initCode) {
+						variantBlock.Add(initCode)
+					}
 					variantBlock.Id("params").Dot("Set" + exportedArgName).Call(Id("tmp"))
 
 					variantBlock.Id("buf").Op(":=").New(Qual("bytes", "Buffer"))
@@ -209,4 +214,33 @@ func genTestWithComplexEnum(tFunGroup *Group, insExportedName string, instructio
 
 		})
 	}
+}
+
+func isEmpty(code Code) bool {
+	return fmt.Sprintf("%#v", code) == ""
+}
+
+func genInitializeComplexEnumFields(idl IDL, enumName string, variant IdlEnumVariant) Code {
+	code := Empty()
+
+	// Get the variant type definition
+	if variant.Fields != nil && variant.Fields.IdlEnumFieldsNamed != nil {
+		for _, field := range *variant.Fields.IdlEnumFieldsNamed {
+			if isComplexEnum(field.Type) {
+				fieldName := ToCamel(field.Name)
+				enumTypeName := field.Type.GetIdlTypeDefined().Defined
+				interfaceType := idl.Types.GetByName(enumTypeName)
+
+				if len(interfaceType.Type.Variants) > 0 {
+					// Initialize to first variant ("None" variant)
+					firstVariantName := formatComplexEnumVariantTypeName(enumTypeName, interfaceType.Type.Variants[0].Name)
+					code.If(Id("tmp").Dot(fieldName).Op("==").Nil()).Block(
+						Id("tmp").Dot(fieldName).Op("=").Op("&").Id(firstVariantName).Block(),
+					).Line()
+				}
+			}
+		}
+	}
+
+	return code
 }
